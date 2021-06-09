@@ -1,0 +1,44 @@
+#!/usr/bin/python3 -u
+import asyncio
+import os
+import sys
+from threading import Thread
+
+class SsbAutoFollow(asyncio.DatagramProtocol):
+    def __init__(self):
+        super().__init__()
+
+    def connection_made(self, transport):
+        self.transport = transport
+        print("UDP Connection available")
+
+    def datagram_received(self, data, addr):
+
+        # Here is where you would push message to whatever methods/classes you want.
+        data = data.decode()
+        userId = "@"+str(data).split(":")[3].split(";")[0]+".ed25519"
+        path = os.path.abspath("followed.db")
+        with open(path, mode="r+", encoding="utf-8") as followed:
+            follow_list = followed.read().split("\n")
+
+            if userId not in follow_list:
+                result = os.system("node bin.js publish --type contact --contact " + userId + " --following")
+                if result == 0:
+                    print("Followed user" + userId)
+                    followed.write(userId+"\n")
+
+
+
+def run_ssb_server():
+    os.system("node bin.js start")
+
+
+#ssb_t = Thread(target=run_ssb_server)
+#ssb_t.daemon = True
+#ssb_t.start()
+PORT = 8008
+# Create UDP event loop (get existing loop, we run UDP server on the main thread)
+loop = asyncio.get_event_loop()
+t = loop.create_datagram_endpoint(SsbAutoFollow, reuse_port=True, local_addr=('0.0.0.0', PORT))
+loop.run_until_complete(t) # Server starts listening
+loop.run_forever()

@@ -1,0 +1,9 @@
+#!/usr/bin/python3
+import socket
+import sys
+
+HOST, PORT = 'localhost', 10823
+
+# Open udp socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(sys.argv[2].encode(), (HOST, PORT))

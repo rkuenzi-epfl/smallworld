@@ -1,0 +1,259 @@
+#!/usr/bin/python3 -u
+import asyncio
+import os
+from threading import Thread, activeCount
+from time import sleep
+from gpiozero import LED, Button
+
+
+class BlinkLED:
+
+    def __init__(self, led):
+       self.led = led
+       self.is_blinking = False
+       self.t = None
+
+    def blink(self):
+        self.is_blinking = True
+        # If the thread exist it means we are already blinking
+        if self.t is None:
+            # Blinking is "blocking" so we do it in another thread
+            self.t = Thread(target=self.blink_loop)
+            self.t.daemon = True
+            self.t.start()
+
+    def off(self):
+       self.is_blinking = False
+       if self.t is not None:
+           self.t.join()
+           self.t = None
+       self.led.off()
+
+    def on(self):
+        self.is_blinking = False
+        if self.t is not None:
+            self.t.join()
+            self.t = None
+        self.led.on()
+
+    def blink_loop(self):
+        print("Start blinking")
+        while self.is_blinking:
+            self.led.on()
+            if self.is_blinking:
+                sleep(2)
+                self.led.off()
+            if self.is_blinking:
+                sleep(2)
+        print("Stop blinking")
+
+
+
+class Smallworld():
+
+    def __init__(self):
+        # Port for farming simulator 2011; This is very important
+        PORT = 10823
+
+        # We might want to be able to get these as arguments
+        self.ap_led = LED(19)
+        self.connection_led = BlinkLED(LED(26))
+
+        # 1/2 a second is a lot but I don't really see why we would press more often than this
+        self.ap_btn = Button(13, bounce_time=0.1)
+        self.wps_btn = Button(6, bounce_time=0.1)
+
+        self.ap_btn.when_pressed = self.apPressed
+        self.wps_btn.when_pressed = self.wpsPressed
+
+
+        self.is_ap_on = False
+        self.wps_state = False
+        self.nb_connection = 0
+
+        # Don't rerun wpa control interface if it already exist
+        pid_path = os.path.abspath("wpa_forwarding.pid")
+        if not os.path.isfile(pid_path):
+            event_path = "/usr/sbin/smallworldForwardEvent"
+            res = os.system("wpa_cli -iwlan0 -B -P" + pid_path + " -a" + event_path)
+            print("Enabled wpa_supplicant control interface message forwarding, result: " + str(res))
+
+        # Reload: make sure we give the right feedback
+        res = os.system("wpa_cli -iwlan0 reconfigure")
+        print("Reconfigured with complete config file, result: " + str(res))
+        # If there is already an hostapd control interface, then it means it
+        # was on AP mode before the script restart
+        pid_path = os.path.abspath("hostapd_forwarding.pid")
+        if os.path.isfile(pid_path):
+            self.is_ap_on = True
+            # Reload: make sure we give the right feedback
+            res = os.system("systemctl restart hostapd")
+            print("(Re)started hostapd, result: " + str(res))
+            pid_path = os.path.abspath("hostapd_forwarding.pid")
+            path = "/usr/sbin/smallworldForwardEvent"
+            res = os.system("hostapd_cli -B -P" + pid_path +" -a" + path)
+            print("Enable hostapd control interface message forwarding, result: " + str(res))
+
+        # Create UDP event loop (get existing loop, we run UDP server on the main thread)
+        self.loop = asyncio.get_event_loop()
+
+        t = self.loop.create_datagram_endpoint(lambda: SmallworldProtocol(self),  local_addr=('0.0.0.0', PORT))
+        self.loop.run_until_complete(t) # Server starts listening
+        self.loop.run_forever()
+
+
+    def apPressed(self):
+
+        print("Ap pressed")
+        self.nb_connection = 0
+        if self.is_ap_on:
+
+            if self.connection_led.is_blinking:
+                res = os.system("hostapd_cli wps_cancel")
+                print("WPS search cancelation, result: " + str(res))
+                self.connection_led.off()
+
+            # Stop AP
+            res = os.system("systemctl stop hostapd")
+            print("Stoped hostapd, result: " + str(res))
+
+            # Copy wpa config file
+            with open("/etc/smallworld/wpa_noAP.conf", mode="r") as noAP_file:
+                noAP = noAP_file.read()
+                with open("/etc/wpa_supplicant/wpa_supplicant.conf", mode="w") as conf_file:
+                    conf_file.write(str(noAP))
+
+            # Reread configuration
+            res = os.system("wpa_cli -iwlan0 reconfigure")
+            print("Reconfigured with complete config file, result: " + str(res))
+
+        else:
+            if self.connection_led.is_blinking:
+                res = os.system("wpa_cli -iwlan0 wps_cancel")
+                print("WPS search cancelation, result: " + str(res))
+                self.connection_led.off()
+
+            # Copy wpa config file
+            with open("/etc/smallworld/wpa_AP.conf", mode="r") as AP_file:
+                AP = AP_file.read()
+                with open("/etc/wpa_supplicant/wpa_supplicant.conf", mode="w") as conf_file:
+                    conf_file.write(str(AP))
+
+            # Reread configuration
+            res = os.system("wpa_cli -iwlan0 reconfigure")
+            print("Reconfigured with empty config file, result: " + str(res))
+
+            # Start AP
+            res = os.system("systemctl restart hostapd")
+            print("(Re)started hostapd, result: " + str(res))
+
+            # hostpad_cli is stoped when hostapd stop so we need to restart this
+            pid_path = os.path.abspath("hostapd_forwarding.pid")
+            path = "/usr/sbin/smallworldForwardEvent"
+            res = os.system("hostapd_cli -B -P" + pid_path +" -a" + path)
+            print("Enable hostapd control interface message forwarding, result: " + str(res))
+
+
+        self.is_ap_on = not self.is_ap_on
+        self.ap_led.value = self.is_ap_on
+
+
+    def wpsPressed(self):
+        print("wps pressed")
+        if self.connection_led.is_blinking:
+            if self.is_ap_on:
+                res = os.system("hostapd_cli wps_cancel")
+                print("Stoped WPS search (as AP), result: " + str(res))
+                self.connection_led.off()
+
+            else:
+                res = os.system("wpa_cli -iwlan0 wps_cancel")
+                print("Stoped WPS search (as client), result: " + str(res))
+                self.connection_led.off()
+
+        else:
+            if self.is_ap_on:
+                res = os.system("hostapd_cli wps_pbc")
+                print("Started WPS search (as AP), result: " + str(res))
+            else:
+                # Reread configuration: avoid reassociation after PBC end
+                res = os.system("wpa_cli -iwlan0 reconfigure")
+                print("Reconfigured with empty config file, result: " + str(res))
+
+
+                res = os.system("wpa_cli -iwlan0 wps_pbc")
+                print("Started WPS search (as client), result: " + str(res))
+
+    def connected(self):
+        print("Connected")
+        self.nb_connection = self.nb_connection+1
+        print(self.nb_connection)
+
+        self.connection_led.on()
+        if self.is_ap_on:
+            # Remove all associated PSK / mac-addresse pairs. It is done
+            # immediately on connection to make sure the file is always empty.
+            # (This should allow WPS clients to connnect only once so ideally
+            # they should not memorize the AP)
+            with open("/etc/hostapd/hostapd.psk", mode="w") as PSK_file:
+                PSK_file.write("")
+
+
+
+    def disconnected(self):
+        print("Disconnected")
+        if self.nb_connection > 0:
+            self.nb_connection = self.nb_connection-1
+        print("Remaining connections: " + str(self.nb_connection))
+        if self.nb_connection == 0:
+            # This don't force the LED to stop blinking because in certain
+            # cases we get a disconnect during WPS search and we don't want
+            # the led to strop blinking
+            self.connection_led.led.off()
+
+    def wps_active(self):
+        print("WPS start")
+        self.connection_led.blink()
+
+    def wps_timeout(self):
+        print("WPS timed out")
+        self.connection_led.off()
+        if self.nb_connection > 0:
+            self.connection_led.on()
+
+    def wps_success(self):
+        print("WPS success")
+        self.connection_led.on()
+
+class SmallworldProtocol(asyncio.DatagramProtocol):
+    def __init__(self, sw):
+        super().__init__()
+        self.sw = sw
+
+    def connection_made(self, transport):
+        self.transport = transport
+        print("UDP Connection available")
+
+    def datagram_received(self, data, addr):
+        (address, port) = addr
+        if address == '127.0.0.1':
+            # Here is where you would push message to whatever methods/classes you want.
+            data = data.decode()
+            print("Received control interface message: " + str(data) + " from " + str(addr))
+            if str(data) == "CONNECTED" or str(data) == "AP-STA-CONNECTED":
+                print("Current number of thread " + str(activeCount()))
+                self.sw.connected()
+            if str(data) == "DISCONNECTED" or str(data) == "AP-STA-DISCONNECTED":
+                print("Current number of thread " + str(activeCount()))
+                self.sw.disconnected()
+            if str(data) == "WPS-PBC-ACTIVE":
+                print("Current number of thread " + str(activeCount()))
+                self.sw.wps_active()
+            if str(data) == "WPS-TIMEOUT":
+                print("Current number of thread " + str(activeCount()))
+                self.sw.wps_timeout()
+            if str(data) == "WPS-SUCCESS":
+                print("Current number of thread " + str(activeCount()))
+                self.sw.wps_success()
+
+sw = Smallworld()

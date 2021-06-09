@@ -1,0 +1,14 @@
+[Unit]
+Description=Smallworld script
+After=multi-user.target
+
+[Service]
+Type=simple
+StandardOutput=journal
+RuntimeDirectory=smallworld
+WorkingDirectory=/run/smallworld
+ExecStart=/usr/sbin/smallworld
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
