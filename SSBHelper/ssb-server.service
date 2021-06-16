@@ -1,0 +1,13 @@
+[Unit]
+Description=SSB-server
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+StandardOutput=journal
+ExecStart=node <path-to-ssb-server>/bin.js start
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

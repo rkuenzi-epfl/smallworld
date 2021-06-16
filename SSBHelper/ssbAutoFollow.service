@@ -1,0 +1,14 @@
+[Unit]
+Description=SSB auto follow
+After=multi-user.target
+
+[Service]
+Type=simple
+User=pi
+StandardOutput=journal
+WorkingDirectory=<path-to-ssb-server>/
+ExecStart=<path-to-ssb-server>/ssbAutoFollow
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
