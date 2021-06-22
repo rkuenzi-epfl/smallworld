@@ -36,7 +36,7 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
             file.write(userId+"\n")
         else:
             # Restart ssb-server because it pro
-            res = os.system("systemctl restart ssb-server")
+            res = os.system("systemctl --user pi restart ssb-server")
             print("(Re)started ssb-server, result: " + str(res))
 
 PORT = 8008
