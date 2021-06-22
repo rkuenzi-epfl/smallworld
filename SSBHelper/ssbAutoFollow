@@ -23,13 +23,13 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
                 follow_list = followed.read().split("\n")
 
                 if userId not in follow_list:
-                    result = os.system("node bin.js publish --type contact --contact " + userId + " --following")
+                    result = os.system("node bin.js --host 127.0.0.1 publish --type contact --contact " + userId + " --following")
                     if result == 0:
                         print("Followed user" + userId)
                         followed.write(userId+"\n")
         except IOError:
             with open(path, mode="w", encoding="utf-8") as followed:
-                result = os.system("node bin.js publish --type contact --contact " + userId + " --following")
+                result = os.system("node bin.js --host 127.0.0.1 publish --type contact --contact " + userId + " --following")
                 if result == 0:
                     print("Followed user" + userId)
                     followed.write(userId+"\n")
