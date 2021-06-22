@@ -29,7 +29,7 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
             with open(path, mode="w", encoding="utf-8") as followed:
                 self.follow(followed, userId)
 
-    def follow(file, userId):
+    def follow(self, file, userId):
         result = os.system("node bin.js publish --type contact --contact " + userId + " --following")
         if result == 0:
             print("Followed user" + userId)
