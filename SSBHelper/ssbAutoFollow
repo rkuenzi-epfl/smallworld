@@ -23,17 +23,21 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
                 follow_list = followed.read().split("\n")
 
                 if userId not in follow_list:
-                    result = os.system("node bin.js --host 127.0.0.1 publish --type contact --contact " + userId + " --following")
-                    if result == 0:
-                        print("Followed user" + userId)
-                        followed.write(userId+"\n")
+                    self.follow(followed, userId)
+
         except IOError:
             with open(path, mode="w", encoding="utf-8") as followed:
-                result = os.system("node bin.js --host 127.0.0.1 publish --type contact --contact " + userId + " --following")
-                if result == 0:
-                    print("Followed user" + userId)
-                    followed.write(userId+"\n")
+                self.follow(followed, userId)
 
+    def follow(file, userId):
+        result = os.system("node bin.js publish --type contact --contact " + userId + " --following")
+        if result == 0:
+            print("Followed user" + userId)
+            file.write(userId+"\n")
+        else:
+            # Restart ssb-server because it pro
+            res = os.system("systemctl restart ssb-server")
+            print("(Re)started ssb-server, result: " + str(res))
 
 PORT = 8008
 # Create UDP event loop (get existing loop, we run UDP server on the main thread)
