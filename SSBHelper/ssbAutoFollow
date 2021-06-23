@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sys
+from time import sleep
 from threading import Thread
 
 class SsbAutoFollow(asyncio.DatagramProtocol):
@@ -13,18 +14,6 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
         print("UDP Connection available")
 
     def datagram_received(self, data, addr):
-
-        # VERY Inefficient way to make sure the ssb-server runs on the current network
-        result = os.system("node bin.js version")
-        if result != 0:
-            print("Update ssb-server IP")
-            res = os.system("sudo systemctl restart ssb-server")
-            print("(Re)started ssb-server, result: " + str(res))
-
-        tries = 0
-        while result != 0 and tries < 10:
-            tries = tries+1
-            result = os.system("node bin.js version")
 
         # Here is where you would push message to whatever methods/classes you want.
         data = data.decode()
@@ -46,6 +35,21 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
         if result == 0:
             print("Followed user" + userId)
             file.write(userId+"\n")
+
+def updateIP():
+    while True:
+        # VERY Inefficient way to make sure the ssb-server runs on the current network
+        result = os.system("node bin.js version")
+        if result != 0:
+            print("Update ssb-server IP")
+            res = os.system("sudo systemctl restart ssb-server")
+            print("(Re)started ssb-server, result: " + str(res))
+
+        sleep(45)
+
+ip_t = Thread(target=updateIP)
+ip_t.daemon = True
+ip_t.start()
 
 PORT = 8008
 # Create UDP event loop (get existing loop, we run UDP server on the main thread)
