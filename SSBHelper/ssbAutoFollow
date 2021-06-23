@@ -14,6 +14,18 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):
 
+        # VERY Inefficient way to make sure the ssb-server runs on the current network
+        result = os.system("node bin.js version")
+        if result != 0:
+            print("Update ssb-server IP")
+            res = os.system("sudo systemctl restart ssb-server")
+            print("(Re)started ssb-server, result: " + str(res))
+
+        tries = 0
+        while result != 0 and tries < 10:
+            tries = tries+1
+            result = os.system("node bin.js version")
+
         # Here is where you would push message to whatever methods/classes you want.
         data = data.decode()
         userId = "@"+str(data).split(":")[3].split(";")[0]+".ed25519"
@@ -34,10 +46,6 @@ class SsbAutoFollow(asyncio.DatagramProtocol):
         if result == 0:
             print("Followed user" + userId)
             file.write(userId+"\n")
-        else:
-            # Restart ssb-server because it pro
-            res = os.system("systemctl --user pi restart ssb-server")
-            print("(Re)started ssb-server, result: " + str(res))
 
 PORT = 8008
 # Create UDP event loop (get existing loop, we run UDP server on the main thread)
